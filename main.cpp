@@ -5,10 +5,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <time.h>
-#include <boost/process.h>
-#include <iostream.h>
-#include <cstring>
-#include <vector>
+#include <boost/process.hpp>
+#include <iostream>
 
 #include "directed_tbs.h"
 #define NumCores 2
@@ -23,19 +21,16 @@ char *workload_name = "./wokrload.gz";
 char *mem_name = "./wokrload.dat";
 char *gcpt_name = "./gcpt.bin";
 
-std::string get_pldm_command(char *gpct, char *workload, uint64_t max_ins);
-std::string get_bin2addr_command(char *gpct, char *workload);
-int main(int argc, char *argv[])
-{
+std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t max_ins);
+std::string get_bin2addr_command(const char *gpct, const char *workload);
+
+int main(int argc, char *argv[]) {
     const char *detail_to_qemu_fifo_name = "./detail_to_qemu.fifo";
     const char *qemu_to_detail_fifo_name = "./qemu_to_detail.fifo";
     const char *emu_to_cpi_txt_name = "./emu_to_cpi_file.txt"
 
-    std::string pldm_command = get_pldm_command(gcpt_name, workload_name, 40000000);
+    std::string pldm_command = get_pldm_command(gcpt_name, workload_name, 40*1000000);
     std::string bin2addr_commmand = get_bin2addr_command(gcpt_name, workload_name);
-
-    // creact pipline
-    bp::ipstream pipe_stream;
 
     mkfifo(detail_to_qemu_fifo_name, 0666);
     mkfifo(qemu_to_detail_fifo_name, 0666);
@@ -47,18 +42,32 @@ int main(int argc, char *argv[])
     Detail2Qemu d2q_buf;
     Qemu2Detail q2d_buf;
 
-//run qemu
+//read qemu
     read(q2d_fifo, &q2d_buf, sizeof(Qemu2Detail));
     printf("Received from QEMU: %d %d %ld\n", q2d_buf.cpt_ready,
             q2d_buf.cpt_id, q2d_buf.total_inst_count);
 
 //run bin2addr
-
+    try {
+        bp::child b(bin2addr_commmand);
+        b.wait();
+        b.exit_code();
+    } catch (const std::exception &e) {
+        std::cerr << "Exception: " << e.what() << std::endl;
+        return 1;
+    }
 //run emulate
-    bp::child c(pldm_command, bp::std_out > pipe_stream);
-    //cpi resut example [coreid,cpi]
-    int coreid = -1;
+    int coreid = 0;
     double cpi = 0;
+    try {
+        bp::child c(pldm_command);
+        //cpi resut example [coreid,cpi]
+        c.wait();
+        c.exit_code();
+    } catch (const std::exception &e) {
+        std::cerr << "Exception: " << e.what() << std::endl;
+        return 1;
+    }
 
     for(int i = 0; i < NumCores; i++) {
         if (fsancf(emu_result, "%d,%lf\n", &coreid, &cpi) != 2) {
@@ -72,30 +81,33 @@ int main(int argc, char *argv[])
     }
 
     //update qemu
-    printf("Sending to QEMU: %f %f\n", d2q_buf.CPI[i % 2],
-            d2q_buf.CPI[(i + 1) % 2]);
+    printf("Sending to QEMU: %f %f\n", d2q_buf.CPI[0],
+            d2q_buf.CPI[1]);
     write(d2q_fifo, &d2q_buf, sizeof(Detail2Qemu));
 
     return 0;
 }
 
 
-std::string get_pldm_command(char *gpct, char *workload, uint64_t max_ins) {
-    std::string base_command = "make pldm-run";
-    std::string base_arggs = "PLDM_EXTRA_ARGS=""+=diff=./XiangShan/ready-to-run/riscv64-nemu-interpreter-dual-so";
-
+std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t max_ins) {
+    std::string base_command = "make pldm-run ";
+    std::string base_arggs = "PLDM_EXTRA_ARGS=\"+=diff=./XiangShan/ready-to-run/riscv64-nemu-interpreter-dual-so ";
     char args[512];
-    sprintf(args, "+wokrload=%s +gcpt-restore=%s +max-instrs=%ld""" , workload, gcpt);
+    sprintf(args, "+wokrload=%s +gcpt-restore=%s +max-instrs=%ld \"" , workload, gcpt, max_ins);
 
-    std::strcat(base_command, base_arggs);
+    base_command.append(base_arggs);
     base_command.append(args);
-
     return base_command;
 }
 
-std::string get_bin2addr_command(char *gpct, char *workload) {
-//exmaple ./bin2ddr -i $ckpt -o ./out.dat -m "row,ba,col,bg" -r $gcpt
+std::string get_bin2addr_command(const char *gcpt,const char *workload) {
+//exmaple shell: ./bin2ddr -i $ckpt -o ./out.dat -m "row,ba,col,bg" -r $gcpt
+    std::string base_command = "./Bin2Addr/bin2addr";
+    std::string base_arggs = "-m \"row,ba,col,bg\" ";
+    char args[512];
+    sprintf(args, "-i %s -r %s " , workload, gcpt);
 
-
-
+    base_command.append(base_arggs);
+    base_command.append(args);
+    return base_command;
 }
