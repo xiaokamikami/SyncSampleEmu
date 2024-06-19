@@ -8,7 +8,7 @@
 #include <boost/process.hpp>
 #include <iostream>
 
-#include "directed_tbs.h"
+#include "../includ/directed_tbs.h"
 #define NumCores 2
 
 int d2q_fifo;
@@ -27,7 +27,8 @@ std::string get_bin2addr_command(const char *gpct, const char *workload);
 int main(int argc, char *argv[]) {
     const char *detail_to_qemu_fifo_name = "./detail_to_qemu.fifo";
     const char *qemu_to_detail_fifo_name = "./qemu_to_detail.fifo";
-    const char *emu_to_cpi_txt_name = "./emu_to_cpi_file.txt"
+    const char *emu_to_cpi_txt_name = "./emu_to_cpi_file.txt";
+    const char *ckpt_list_name = "./ckpt_list.txt";
 
     std::string pldm_command = get_pldm_command(gcpt_name, workload_name, 40*1000000);
     std::string bin2addr_commmand = get_bin2addr_command(gcpt_name, workload_name);
@@ -39,9 +40,13 @@ int main(int argc, char *argv[]) {
     q2d_fifo = open(qemu_to_detail_fifo_name, O_RDONLY);
 
     FILE *emu_result = fopen(emu_to_cpi_txt_name, O_RDONLY);
+    FILE *workload_list = fopen(ckpt_list_name, O_RDONLY);
+    char workload_name[32] = {};
     Detail2Qemu d2q_buf;
     Qemu2Detail q2d_buf;
-
+//get workload
+    fscanf(workload_list, "%s\n", workload_name);
+//get checkpoint list
 //read qemu
     read(q2d_fifo, &q2d_buf, sizeof(Qemu2Detail));
     printf("Received from QEMU: %d %d %ld\n", q2d_buf.cpt_ready,
@@ -70,11 +75,10 @@ int main(int argc, char *argv[]) {
     }
 
     for(int i = 0; i < NumCores; i++) {
-        if (fsancf(emu_result, "%d,%lf\n", &coreid, &cpi) != 2) {
+        if (fscanf(emu_result, "%d,%lf\n", &coreid, &cpi) != 2) {
             printf("emu out result error\n");
             exit(0);
-        }
-        if (coreid > (NumCores -1)) {
+        } else if (coreid >= NumCores) {
             printf("coreid the maximum number of cores limit was exceeded\n");
         }
         d2q_buf.CPI[coreid] = cpi;
@@ -87,7 +91,6 @@ int main(int argc, char *argv[]) {
 
     return 0;
 }
-
 
 std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t max_ins) {
     std::string base_command = "make pldm-run ";
