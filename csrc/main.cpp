@@ -30,14 +30,12 @@ int main(int argc, char *argv[]) {
     const char *detail_to_qemu_fifo_name = "./detail_to_qemu.fifo";
     const char *qemu_to_detail_fifo_name = "./qemu_to_detail.fifo";
     const char *emu_to_cpi_txt_name = "./emu_to_cpi_file.txt";
-    const char *ckpt_list_name = "./ckpt_list.txt";
-    const char *ckpt_result_root = "./ckpt_result_root";
-    const char *ckpt_config = "ckpt_name";
     char *workload_name = argv[0];
+    char *ckpt_result_root = argv[1];
+    char *ckpt_config = argv[2];
+    char *workload_path = (char *)malloc(FILEPATH_BUF_SIZE);
 
-    std::string qemu_command = get_qemu_command(ckpt_config, workload_name, ckpt_result_root);
-    std::string pldm_command = get_pldm_command(gcpt_name, workload_path, 40 * 1000000);
-    std::string bin2addr_commmand = get_bin2addr_command(gcpt_name, workload_path);
+    std::string qemu_command = get_qemu_command(workload_name, ckpt_result_root, ckpt_config);
 
     mkfifo(detail_to_qemu_fifo_name, 0666);
     mkfifo(qemu_to_detail_fifo_name, 0666);
@@ -46,54 +44,55 @@ int main(int argc, char *argv[]) {
     q2d_fifo = open(qemu_to_detail_fifo_name, O_RDONLY);
 
     FILE *emu_result = fopen(emu_to_cpi_txt_name, O_RDONLY);
-    FILE *workload_list = fopen(ckpt_list_name, O_RDONLY);
 
     Detail2Qemu d2q_buf;
     Qemu2Detail q2d_buf;
-    //run qemu
+    // run qemu
     bp::child q(qemu_command);
     while (1) {
         try {
-            //read qemu
+            // read qemu
             read(q2d_fifo, &q2d_buf, sizeof(Qemu2Detail));
             printf("Received from QEMU: %d %d %ld\n", q2d_buf.cpt_ready,
                     q2d_buf.cpt_id, q2d_buf.total_inst_count);
+            memcpy(workload_path, q2d_buf.checkpoint_path, FILEPATH_BUF_SIZE);
 
-            //run bin2addr
+            // run bin2addr
+            std::string bin2addr_commmand = get_bin2addr_command(gcpt_name, workload_path);
             bp::child b(bin2addr_commmand);
             b.wait();
             b.exit_code();
 
-        //run emulate
+            //run emulate
             int coreid = 0;
             double cpi = 0;
             try {
+                std::string pldm_command = get_pldm_command(gcpt_name, workload_path, 40 * 1000000);
                 bp::child c(pldm_command);
-                //cpi resut example [coreid,cpi]
+                // cpi resut example [coreid,cpi]
                 c.wait();
                 c.exit_code();
             } catch (const std::exception &e) {
                 std::cerr << "Exception: " << e.what() << std::endl;
-                return 1;
+                break;
             }
-
+            // read cpi result
             for(int i = 0; i < NumCores; i++) {
                 if (fscanf(emu_result, "%d,%lf\n", &coreid, &cpi) != 2) {
                     printf("emu out result error\n");
-                    exit(0);
+                    break;
                 } else if (coreid >= NumCores) {
                     printf("coreid the maximum number of cores limit was exceeded\n");
                 }
                 d2q_buf.CPI[coreid] = cpi;
             }
 
-            //update qemu
-            printf("Sending to QEMU: %f %f\n", d2q_buf.CPI[0],
-                    d2q_buf.CPI[1]);
+            // update qemu
+            printf("Sending to QEMU: %f %f\n", d2q_buf.CPI[0], d2q_buf.CPI[1]);
             write(d2q_fifo, &d2q_buf, sizeof(Detail2Qemu));
         } catch (const std::exception &e) {
             std::cerr << "Exception: " << e.what() << std::endl;
-            return 1;
+            break;
         }
     }
 
