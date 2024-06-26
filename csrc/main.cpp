@@ -106,19 +106,15 @@ int main(int argc, char *argv[]) {
 }
 
 std::string get_qemu_command(const char *workload_name, const char *ckpt_result_root, const char *cktp_config, uint64_t sync_interval) {
-//example shell:
-// $QEMU_HOME/build/qemu-system-riscv64 -bios $PAYLOAD -M nemu -nographic -m 8G -smp 2 -cpu rv64,v=true,vlen=128,h=false,sv39=true,sv48=false,sv57=false,sv64=false
-// -workload $WROKLOAD_NAME -cpt-interval 200000000 -output-base-dir $CHECKPOINT_RESULT_ROOT -config-name $CHECKPOINT_CONFIG
-// -checkpoint-mode UniformCheckpoint -sync-interval 100000
-    std::string base_command = "../qemu/build/qemu-system-riscv64 ";
-    std::string base_arggs = "-M nemu -nographic -m 8G -smp 2 -cpu rv64,v=true,vlen=128,h=false,sv39=true,sv48=false,sv57=false,sv64=false \
-                              -checkpoint-mode UniformCheckpoint";
+    std::string base_command = "$QEMU/build/qemu-system-riscv64 -bios $PAYLOAD -M nemu ";
+    std::string base_arggs = "checkpoint-mode=SyncUniformCheckpoint -nographic -m 8G -smp 2 -cpu rv64,v=true,vlen=128;";
     char args[512];
-    sprintf(args, "-workload %s -cpt-interval 200000000 -output-base-dir %s -config-name %s -sync-interval ",
-            workload_name, ckpt_result_root, cktp_config, sync_interval);
+    sprintf(args, "sync-interval=%ld,cpt-interval=200000000,output-base-dir=%s,config-name=%s,workload=%s,",
+            sync_interval, ckpt_result_root, cktp_config, workload_name);
 
-    base_command.append(base_arggs);
     base_command.append(args);
+    base_command.append(base_arggs);
+
     return base_command;
 }
 
@@ -126,7 +122,7 @@ std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t ma
     std::string base_command = "cd XiangShan && make pldm-run ";
     std::string base_arggs = "PLDM_EXTRA_ARGS=\"+=diff=./XiangShan/ready-to-run/riscv64-nemu-interpreter-dual-so ";
     char args[512];
-    sprintf(args, "+wokrload=%s +gcpt-restore=%s +max-instrs=%ld \"" , workload, gcpt, max_ins);
+    sprintf(args, "+wokrload=%s +gcpt-restore=%s +max-instrs=%ld \" && cd .." , workload, gcpt, max_ins);
 
     base_command.append(base_arggs);
     base_command.append(args);
