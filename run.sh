@@ -20,7 +20,7 @@ do
         work_load_name=${var#$CHECKPOINT_PATH/}
         work_load_name=${work_load_name%/*}
         export PAYLOAD=$file # 工作负载二进制文件路径
-        #./syncmapemu argv[0] [1] [2]
-        ./syncmapemu $work_load_name $CHECKPOINT_RESULT_ROOT $CHECKPOINT_CONFIG
+        #./syncmapemu argv[0] [1] [2] [3]
+        ./syncmapemu $work_load_name $CHECKPOINT_RESULT_ROOT $CHECKPOINT_CONFIG 1000000
     fi
 done

@@ -22,7 +22,7 @@ char *workload_path = "./wokrload.gz";
 char *mem_name = "./wokrload.dat";
 char *gcpt_name = "./gcpt.bin";
 
-std::string get_qemu_command(const char *workload_name, const char *ckpt_result_root, const char *cktp_config);
+std::string get_qemu_command(const char *workload_name, const char *ckpt_result_root, const char *cktp_config, uint64_t sync_interval);
 std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t max_ins);
 std::string get_bin2addr_command(const char *gpct, const char *workload);
 
@@ -30,12 +30,14 @@ int main(int argc, char *argv[]) {
     const char *detail_to_qemu_fifo_name = "./detail_to_qemu.fifo";
     const char *qemu_to_detail_fifo_name = "./qemu_to_detail.fifo";
     const char *emu_to_cpi_txt_name = "./emu_to_cpi_file.txt";
+    const char *workload_path = "./workload.dat";
     char *workload_name = argv[0];
     char *ckpt_result_root = argv[1];
     char *ckpt_config = argv[2];
-    char *workload_path = (char *)malloc(FILEPATH_BUF_SIZE);
-
-    std::string qemu_command = get_qemu_command(workload_name, ckpt_result_root, ckpt_config);
+    char *ckpt_path = (char *)malloc(FILEPATH_BUF_SIZE);
+    uint64_t sync_interval = 0;
+    sscanf(argv[3], "%ld", sync_interval);
+    std::string qemu_command = get_qemu_command(workload_name, ckpt_result_root, ckpt_config, sync_interval);
 
     mkfifo(detail_to_qemu_fifo_name, 0666);
     mkfifo(qemu_to_detail_fifo_name, 0666);
@@ -55,10 +57,10 @@ int main(int argc, char *argv[]) {
             read(q2d_fifo, &q2d_buf, sizeof(Qemu2Detail));
             printf("Received from QEMU: %d %d %ld\n", q2d_buf.cpt_ready,
                     q2d_buf.cpt_id, q2d_buf.total_inst_count);
-            memcpy(workload_path, q2d_buf.checkpoint_path, FILEPATH_BUF_SIZE);
+            memcpy(ckpt_path, q2d_buf.checkpoint_path, FILEPATH_BUF_SIZE);
 
             // run bin2addr
-            std::string bin2addr_commmand = get_bin2addr_command(gcpt_name, workload_path);
+            std::string bin2addr_commmand = get_bin2addr_command(gcpt_name, ckpt_path);
             bp::child b(bin2addr_commmand);
             b.wait();
             b.exit_code();
@@ -102,14 +104,15 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-std::string get_qemu_command(const char *workload_name, const char *ckpt_result_root, const char *cktp_config) {
+std::string get_qemu_command(const char *workload_name, const char *ckpt_result_root, const char *cktp_config, uint64_t sync_interval) {
 //example shell:
 //$QEMU_HOME/build/qemu-system-riscv64 -bios $PAYLOAD -M nemu -nographic -m 8G -smp 2 -cpu rv64,v=true,vlen=128,h=false,sv39=true,sv48=false,sv57=false,sv64=false
 // -workload $WROKLOAD_NAME -cpt-interval 200000000 -output-base-dir $CHECKPOINT_RESULT_ROOT -config-name $CHECKPOINT_CONFIG -checkpoint-mode UniformCheckpoint;
     std::string base_command = "../qemu/build/qemu-system-riscv64 ";
     std::string base_arggs = "-M nemu -nographic -m 8G -smp 2 -cpu rv64,v=true,vlen=128,h=false,sv39=true,sv48=false,sv57=false,sv64=false -checkpoint-mode UniformCheckpoint";
     char args[512];
-    sprintf(args, "-workload %s -cpt-interval 200000000 -output-base-dir %s -config-name %s" , workload_name, ckpt_result_root, cktp_config);
+    sprintf(args, "-workload %s -cpt-interval 200000000 -output-base-dir %s -config-name %s -sync-interval ",
+            workload_name, ckpt_result_root, cktp_config, sync_interval);
 
     base_command.append(base_arggs);
     base_command.append(args);
