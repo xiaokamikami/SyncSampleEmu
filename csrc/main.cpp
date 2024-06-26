@@ -36,7 +36,8 @@ int main(int argc, char *argv[]) {
     char *ckpt_config = argv[2];
     char *ckpt_path = (char *)malloc(FILEPATH_BUF_SIZE);
     uint64_t sync_interval = 0;
-    sscanf(argv[3], "%ld", sync_interval);
+
+    sscanf(argv[3], "%ld", &sync_interval);
     std::string qemu_command = get_qemu_command(workload_name, ckpt_result_root, ckpt_config, sync_interval);
 
     mkfifo(detail_to_qemu_fifo_name, 0666);
@@ -106,10 +107,12 @@ int main(int argc, char *argv[]) {
 
 std::string get_qemu_command(const char *workload_name, const char *ckpt_result_root, const char *cktp_config, uint64_t sync_interval) {
 //example shell:
-//$QEMU_HOME/build/qemu-system-riscv64 -bios $PAYLOAD -M nemu -nographic -m 8G -smp 2 -cpu rv64,v=true,vlen=128,h=false,sv39=true,sv48=false,sv57=false,sv64=false
-// -workload $WROKLOAD_NAME -cpt-interval 200000000 -output-base-dir $CHECKPOINT_RESULT_ROOT -config-name $CHECKPOINT_CONFIG -checkpoint-mode UniformCheckpoint;
+// $QEMU_HOME/build/qemu-system-riscv64 -bios $PAYLOAD -M nemu -nographic -m 8G -smp 2 -cpu rv64,v=true,vlen=128,h=false,sv39=true,sv48=false,sv57=false,sv64=false
+// -workload $WROKLOAD_NAME -cpt-interval 200000000 -output-base-dir $CHECKPOINT_RESULT_ROOT -config-name $CHECKPOINT_CONFIG
+// -checkpoint-mode UniformCheckpoint -sync-interval 100000
     std::string base_command = "../qemu/build/qemu-system-riscv64 ";
-    std::string base_arggs = "-M nemu -nographic -m 8G -smp 2 -cpu rv64,v=true,vlen=128,h=false,sv39=true,sv48=false,sv57=false,sv64=false -checkpoint-mode UniformCheckpoint";
+    std::string base_arggs = "-M nemu -nographic -m 8G -smp 2 -cpu rv64,v=true,vlen=128,h=false,sv39=true,sv48=false,sv57=false,sv64=false \
+                              -checkpoint-mode UniformCheckpoint";
     char args[512];
     sprintf(args, "-workload %s -cpt-interval 200000000 -output-base-dir %s -config-name %s -sync-interval ",
             workload_name, ckpt_result_root, cktp_config, sync_interval);
