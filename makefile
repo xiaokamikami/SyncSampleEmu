@@ -8,7 +8,7 @@ SRCDIR = ./csrc/
 INCDIR = ./include/  
 OBJDIR = ./obj/  
 
-LDFLAGS = -lz -lzstd -lboost_system -lboost_filesystem
+LDFLAGS =-L. -static -lz -lzstd -lboost_system -lboost_filesystem
 # 使用 -I 选项指定头文件搜索路径  
 CPPFLAGS = -I$(INCDIR)  
   

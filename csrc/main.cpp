@@ -7,6 +7,7 @@
 #include <time.h>
 #include <boost/process.hpp>
 #include <iostream>
+#include <thread>
 
 #include "../includ/directed_tbs.h"
 #define NumCores 2
@@ -18,41 +19,84 @@ double CPI[NumCores] = {};
 
 namespace bp = boost::process;
 
-std::string get_qemu_command(const char *workload_name, const char *ckpt_result_root, const char *cktp_config, uint64_t sync_interval);
+std::string get_qemu_command(const char *payload, const char *workload_name, const char *ckpt_result_root, const char *cktp_config, uint64_t sync_interval);
 std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t max_ins);
 std::string get_bin2addr_command(const char *gpct, const char *workload);
+
+int run_qemu(std::string command) {
+    bp::ipstream pipe_stream;
+    bp::child q(command, bp::std_out > bp::null);
+    //bp::child q(command, bp::std_out > pipe_stream);
+    // // 读取输出
+    // std::string line;
+    // while (pipe_stream && std::getline(pipe_stream, line) && !line.empty()) {
+    //     std::cout << line << std::endl;
+    // }
+    q.wait();
+    q.exit_code();
+    return 1;
+}
 
 int main(int argc, char *argv[]) {
     const char *detail_to_qemu_fifo_name = "./detail_to_qemu.fifo";
     const char *qemu_to_detail_fifo_name = "./qemu_to_detail.fifo";
-    const char *emu_to_cpi_txt_name = "./emu_to_cpi_file.txt";
+    const char *emu_to_cpi_txt_name = "./emu/emu_to_cpi_file.fifo";
     const char *gcpt_name = "./gcpt.bin";
     const char *workload_path = "./out.dat";
-    char *workload_name = argv[0];
-    char *ckpt_result_root = argv[1];
-    char *ckpt_config = argv[2];
+    char *payload_path = argv[1];
+    char *workload_name = argv[2];
+    char *ckpt_result_root = argv[3];
+    char *ckpt_config = argv[4];
     char *ckpt_path = (char *)malloc(FILEPATH_BUF_SIZE);
     uint64_t sync_interval = 0;
+    sscanf(argv[5], "%ld", &sync_interval);
 
-    sscanf(argv[3], "%ld", &sync_interval);
-    std::string qemu_command = get_qemu_command(workload_name, ckpt_result_root, ckpt_config, sync_interval);
-
+    printf("Run sync emu with qemu\n");
+    printf("payload=%s, workload_name=%s, result_root=%s , config=%s, sync_interval=%ld\n",
+            payload_path, workload_name, ckpt_result_root, ckpt_config, sync_interval);
+    std::string qemu_command = get_qemu_command(payload_path, workload_name, ckpt_result_root, ckpt_config, sync_interval);
+    std::cout << "qemu command" << qemu_command << std::endl;
     mkfifo(detail_to_qemu_fifo_name, 0666);
     mkfifo(qemu_to_detail_fifo_name, 0666);
 
-    d2q_fifo = open(detail_to_qemu_fifo_name, O_WRONLY);
-    q2d_fifo = open(qemu_to_detail_fifo_name, O_RDONLY);
-
-    FILE *emu_result = fopen(emu_to_cpi_txt_name, O_RDONLY);
+    FILE *emu_result = fopen(emu_to_cpi_txt_name, "r+");
 
     Detail2Qemu d2q_buf;
     Qemu2Detail q2d_buf;
     // run qemu
-    bp::child q(qemu_command);
+    std::thread t(run_qemu, qemu_command);
+    printf("run qemu\n");
+    sleep(5);
+    printf("init ok\n");
+    d2q_fifo = open(detail_to_qemu_fifo_name, O_WRONLY);
+    q2d_fifo = open(qemu_to_detail_fifo_name, O_RDONLY);
+    printf("into checkpoint sync while\n");
     while (1) {
         try {
             // read qemu
-            read(q2d_fifo, &q2d_buf, sizeof(Qemu2Detail));
+            printf("wait qemu fifo\n");
+            ssize_t read_bytes = read(q2d_fifo, &q2d_buf, sizeof(Qemu2Detail));
+            printf("get qemu fifo\n");
+//#define SYNC_TEST
+#ifdef SYNC_TEST
+            while(1) {
+                ssize_t read_bytes = read(q2d_fifo, &q2d_buf, sizeof(Qemu2Detail));
+                printf("get qemu fifo\n");
+                sleep(5);
+                printf("update sync qemu\n");
+                d2q_buf.CPI[0]=1;
+                d2q_buf.CPI[1]=1;
+                ssize_t write_bytes = write(d2q_fifo, &d2q_buf, sizeof(Detail2Qemu));
+                if (write_bytes == -1) {
+                    printf("write emu fifo faile\n");
+                    return 1;
+                }
+            }
+#endif
+            if (read_bytes == -1) {
+                printf("read qemu fifo faile\n");
+                break;
+            }
             printf("Received from QEMU: %d %d %ld\n", q2d_buf.cpt_ready,
                     q2d_buf.cpt_id, q2d_buf.total_inst_count);
             memcpy(ckpt_path, q2d_buf.checkpoint_path, FILEPATH_BUF_SIZE);
@@ -89,25 +133,26 @@ int main(int argc, char *argv[]) {
 
             // update qemu
             printf("Sending to QEMU: %f %f\n", d2q_buf.CPI[0], d2q_buf.CPI[1]);
-            write(d2q_fifo, &d2q_buf, sizeof(Detail2Qemu));
+            ssize_t write_bytes = write(d2q_fifo, &d2q_buf, sizeof(Detail2Qemu));
+            if (write_bytes == -1) {
+                printf("write emu fifo faile\n");
+                break;
+            }
         } catch (const std::exception &e) {
             std::cerr << "Exception: " << e.what() << std::endl;
             break;
         }
     }
 
-    q.wait();
-    q.exit_code();
-
     return 0;
 }
 
-std::string get_qemu_command(const char *workload_name, const char *ckpt_result_root, const char *cktp_config, uint64_t sync_interval) {
-    std::string base_command = "$QEMU/build/qemu-system-riscv64 -bios $PAYLOAD -M nemu ";
-    std::string base_arggs = "checkpoint-mode=SyncUniformCheckpoint -nographic -m 8G -smp 2 -cpu rv64,v=true,vlen=128;";
+std::string get_qemu_command(const char *payload, const char *workload_name, const char *ckpt_result_root, const char *cktp_config, uint64_t sync_interval) {
+    std::string base_command = "./qemu/build/qemu-system-riscv64 ";
+    std::string base_arggs = "checkpoint-mode=SyncUniformCheckpoint -nographic -m 8G -smp 2 -cpu rv64,v=true,vlen=128";
     char args[512];
-    sprintf(args, "sync-interval=%ld,cpt-interval=200000000,output-base-dir=%s,config-name=%s,workload=%s,",
-            sync_interval, ckpt_result_root, cktp_config, workload_name);
+    sprintf(args, "-bios %s -M nemu,sync-interval=%ld,cpt-interval=200000000,output-base-dir=%s,config-name=%s,workload=%s,",
+            payload, sync_interval, ckpt_result_root, cktp_config, workload_name);
 
     base_command.append(args);
     base_command.append(base_arggs);
