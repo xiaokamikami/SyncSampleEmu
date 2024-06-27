@@ -18,10 +18,6 @@ double CPI[NumCores] = {};
 
 namespace bp = boost::process;
 
-char *workload_path = "./wokrload.gz";
-char *mem_name = "./wokrload.dat";
-char *gcpt_name = "./gcpt.bin";
-
 std::string get_qemu_command(const char *workload_name, const char *ckpt_result_root, const char *cktp_config, uint64_t sync_interval);
 std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t max_ins);
 std::string get_bin2addr_command(const char *gpct, const char *workload);
@@ -30,7 +26,8 @@ int main(int argc, char *argv[]) {
     const char *detail_to_qemu_fifo_name = "./detail_to_qemu.fifo";
     const char *qemu_to_detail_fifo_name = "./qemu_to_detail.fifo";
     const char *emu_to_cpi_txt_name = "./emu_to_cpi_file.txt";
-    const char *workload_path = "./workload.dat";
+    const char *gcpt_name = "./gcpt.bin";
+    const char *workload_path = "./out.dat";
     char *workload_name = argv[0];
     char *ckpt_result_root = argv[1];
     char *ckpt_config = argv[2];
@@ -114,7 +111,6 @@ std::string get_qemu_command(const char *workload_name, const char *ckpt_result_
 
     base_command.append(args);
     base_command.append(base_arggs);
-
     return base_command;
 }
 
@@ -132,7 +128,7 @@ std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t ma
 std::string get_bin2addr_command(const char *gcpt,const char *workload) {
 //exmaple shell: ./bin2ddr -i $ckpt -o ./out.dat -m "row,ba,col,bg" -r $gcpt
     std::string base_command = "./Bin2Addr/bin2addr";
-    std::string base_arggs = "-m \"row,ba,col,bg\" ";
+    std::string base_arggs = "-m \"row,ba,col,bg\" -o $(pwd)/out.dat";
     char args[512];
     sprintf(args, "-i %s -r %s " , workload, gcpt);
 
