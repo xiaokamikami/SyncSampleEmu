@@ -76,6 +76,10 @@ int main(int argc, char *argv[]) {
             // read qemu
             printf("wait qemu fifo\n");
             ssize_t read_bytes = read(q2d_fifo, &q2d_buf, sizeof(Qemu2Detail));
+            if (read_bytes == -1) {
+                printf("read qemu fifo faile\n");
+                break;
+            }
             printf("get qemu fifo\n");
 //#define SYNC_TEST
 #ifdef SYNC_TEST
@@ -93,25 +97,22 @@ int main(int argc, char *argv[]) {
                 }
             }
 #endif
-            if (read_bytes == -1) {
-                printf("read qemu fifo faile\n");
-                break;
-            }
             printf("Received from QEMU: %d %d %ld\n", q2d_buf.cpt_ready,
                     q2d_buf.cpt_id, q2d_buf.total_inst_count);
             memcpy(ckpt_path, q2d_buf.checkpoint_path, FILEPATH_BUF_SIZE);
 
-            // run bin2addr
-            std::string bin2addr_commmand = get_bin2addr_command(gcpt_name, ckpt_path);
-            bp::child b(bin2addr_commmand);
-            b.wait();
-            b.exit_code();
+            // // run bin2addr
+            // std::string bin2addr_commmand = get_bin2addr_command(gcpt_name, ckpt_path);
+            // bp::child b(bin2addr_commmand);
+            // b.wait();
+            // b.exit_code();
 
             //run emulate
             int coreid = 0;
             double cpi = 0;
             try {
-                std::string pldm_command = get_pldm_command(gcpt_name, workload_path, 40 * 1000000);
+                std::string pldm_command = get_pldm_command(gcpt_name, ckpt_path, 40 * 1000000);
+                std::cout << "get pldm command" << pldm_command << std::endl;
                 bp::child c(pldm_command);
                 // cpi resut example [coreid,cpi]
                 c.wait();
@@ -160,12 +161,9 @@ std::string get_qemu_command(const char *payload, const char *workload_name, con
 }
 
 std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t max_ins) {
-    std::string base_command = "cd XiangShan && make pldm-run ";
-    std::string base_arggs = "PLDM_EXTRA_ARGS=\"+=diff=./XiangShan/ready-to-run/riscv64-nemu-interpreter-dual-so ";
+    std::string base_command = "sh pldm.sh ";
     char args[512];
-    sprintf(args, "+wokrload=%s +gcpt-restore=%s +max-instrs=%ld \" && cd .." , workload, gcpt, max_ins);
-
-    base_command.append(base_arggs);
+    sprintf(args, "%s", workload);
     base_command.append(args);
     return base_command;
 }
