@@ -23,26 +23,33 @@ std::string get_qemu_command(const char *payload, const char *workload_name, con
 std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t max_ins);
 std::string get_bin2addr_command(const char *gpct, const char *workload);
 
+bp::child* qemu_process = nullptr;
+
+void terminate_qemu() {
+    if (qemu_process) {
+        std::cout << "Terminating QEMU process..." << std::endl;
+        qemu_process->terminate();
+    }
+}
+
 int run_qemu(std::string command) {
-    bp::ipstream pipe_stream;
-    bp::child q(command, bp::std_out > bp::null);
-    //bp::child q(command, bp::std_out > pipe_stream);
-    // // 读取输出
-    // std::string line;
-    // while (pipe_stream && std::getline(pipe_stream, line) && !line.empty()) {
-    //     std::cout << line << std::endl;
-    // }
-    q.wait();
-    q.exit_code();
-    return 1;
+    qemu_process = new bp::child(command, bp::std_out > bp::null);
+    std::atexit(terminate_qemu);
+
+    qemu_process->wait();
+    int exit_code = qemu_process->exit_code();
+
+    delete qemu_process;
+    qemu_process = nullptr;
+    return exit_code;
 }
 
 int main(int argc, char *argv[]) {
     const char *detail_to_qemu_fifo_name = "./detail_to_qemu.fifo";
     const char *qemu_to_detail_fifo_name = "./qemu_to_detail.fifo";
-    const char *emu_to_cpi_txt_name = "./emu/emu_to_cpi_file.fifo";
+    const char *emu_to_cpi_txt_name = "./emu/emu_to_cpi_file.txt";
     const char *gcpt_name = "./gcpt.bin";
-    const char *workload_path = "./out.dat";
+    const char *ddr_dat = "./out.dat";
     char *payload_path = argv[1];
     char *workload_name = argv[2];
     char *ckpt_result_root = argv[3];
@@ -73,14 +80,6 @@ int main(int argc, char *argv[]) {
     printf("into checkpoint sync while\n");
     while (1) {
         try {
-            // read qemu
-            printf("wait qemu fifo\n");
-            ssize_t read_bytes = read(q2d_fifo, &q2d_buf, sizeof(Qemu2Detail));
-            if (read_bytes == -1) {
-                printf("read qemu fifo faile\n");
-                break;
-            }
-            printf("get qemu fifo\n");
 //#define SYNC_TEST
 #ifdef SYNC_TEST
             while(1) {
@@ -96,22 +95,33 @@ int main(int argc, char *argv[]) {
                     return 1;
                 }
             }
+#else
+            // read qemu
+            printf("wait qemu fifo\n");
+            ssize_t read_bytes = read(q2d_fifo, &q2d_buf, sizeof(Qemu2Detail));
+            if (read_bytes == -1) {
+                printf("read qemu fifo faile\n");
+                break;
+            }
 #endif
             printf("Received from QEMU: %d %d %ld\n", q2d_buf.cpt_ready,
                     q2d_buf.cpt_id, q2d_buf.total_inst_count);
             memcpy(ckpt_path, q2d_buf.checkpoint_path, FILEPATH_BUF_SIZE);
 
-            // // run bin2addr
-            // std::string bin2addr_commmand = get_bin2addr_command(gcpt_name, ckpt_path);
-            // bp::child b(bin2addr_commmand);
-            // b.wait();
-            // b.exit_code();
-
+#ifdef USE_DDR
+            // run bin2addr
+            std::string bin2addr_commmand = get_bin2addr_command(gcpt_name, ckpt_path);
+            bp::child b(bin2addr_commmand);
+            b.wait();
+            b.exit_code();
+            std::string pldm_command = get_pldm_command(gcpt_name, ddr_dat, 40 * 1000000);
+#else
+            std::string pldm_command = get_pldm_command(gcpt_name, ckpt_path, 40 * 1000000);
+#endif
             //run emulate
             int coreid = 0;
             double cpi = 0;
             try {
-                std::string pldm_command = get_pldm_command(gcpt_name, ckpt_path, 40 * 1000000);
                 std::cout << "get pldm command" << pldm_command << std::endl;
                 bp::child c(pldm_command);
                 // cpi resut example [coreid,cpi]
