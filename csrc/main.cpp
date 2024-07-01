@@ -26,6 +26,11 @@ std::string get_bin2addr_command(const char *gpct, const char *workload);
 bp::child* qemu_process = nullptr;
 
 void terminate_qemu() {
+    if (qemu_process != nullptr) {
+        qemu_process->exit_code();
+        delete qemu_process;
+        qemu_process = nullptr;
+    }
     if (qemu_process) {
         std::cout << "Terminating QEMU process..." << std::endl;
         qemu_process->terminate();
@@ -65,8 +70,6 @@ int main(int argc, char *argv[]) {
     std::cout << "qemu command" << qemu_command << std::endl;
     mkfifo(detail_to_qemu_fifo_name, 0666);
     mkfifo(qemu_to_detail_fifo_name, 0666);
-
-    FILE *emu_result = fopen(emu_to_cpi_txt_name, "r+");
 
     Detail2Qemu d2q_buf;
     Qemu2Detail q2d_buf;
@@ -121,17 +124,17 @@ int main(int argc, char *argv[]) {
             //run emulate
             int coreid = 0;
             double cpi = 0;
-            try {
-                std::cout << "get pldm command" << pldm_command << std::endl;
-                bp::child c(pldm_command);
-                // cpi resut example [coreid,cpi]
-                c.wait();
-                c.exit_code();
-            } catch (const std::exception &e) {
-                std::cerr << "Exception: " << e.what() << std::endl;
+            std::cout << "get pldm command" << pldm_command << std::endl;
+            bp::child c(pldm_command);
+            // cpi resut example [coreid,cpi]
+            c.wait();
+            c.exit_code();
+            // read cpi result
+            FILE *emu_result = fopen(emu_to_cpi_txt_name, "r+");
+            if (emu_result == NULL) {
+                printf("open emu cpi result fail\n");
                 break;
             }
-            // read cpi result
             for(int i = 0; i < NumCores; i++) {
                 if (fscanf(emu_result, "%d,%lf\n", &coreid, &cpi) != 2) {
                     printf("emu out result error\n");
@@ -154,7 +157,7 @@ int main(int argc, char *argv[]) {
             break;
         }
     }
-
+    terminate_qemu();
     return 0;
 }
 
