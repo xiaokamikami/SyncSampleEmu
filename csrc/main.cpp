@@ -22,43 +22,23 @@ namespace bp = boost::process;
 std::string get_qemu_command(const char *payload, const char *workload_name, const char *ckpt_result_root, const char *cktp_config, uint64_t sync_interval);
 std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t max_ins);
 std::string get_bin2addr_command(const char *gpct, const char *workload);
+void terminate_qemu();
+int run_qemu(std::string command);
 
 bp::child* qemu_process = nullptr;
 
-void terminate_qemu() {
-    if (qemu_process != nullptr) {
-        qemu_process->exit_code();
-        delete qemu_process;
-        qemu_process = nullptr;
-    }
-    if (qemu_process) {
-        std::cout << "Terminating QEMU process..." << std::endl;
-        qemu_process->terminate();
-    }
-}
-
-int run_qemu(std::string command) {
-    qemu_process = new bp::child(command, bp::std_out > bp::null);
-    std::atexit(terminate_qemu);
-
-    qemu_process->wait();
-    int exit_code = qemu_process->exit_code();
-
-    delete qemu_process;
-    qemu_process = nullptr;
-    return exit_code;
-}
+const char *checkpoint_result_name = "./checkpoint_cpi.csv";
+const char *detail_to_qemu_fifo_name = "./detail_to_qemu.fifo";
+const char *qemu_to_detail_fifo_name = "./qemu_to_detail.fifo";
+const char *gcpt_name = "./gcpt.bin";
+const char *ddr_dat = "./out.dat";
 
 int main(int argc, char *argv[]) {
-    const char *detail_to_qemu_fifo_name = "./detail_to_qemu.fifo";
-    const char *qemu_to_detail_fifo_name = "./qemu_to_detail.fifo";
-    const char *emu_to_cpi_txt_name = "./emu/emu_to_cpi_file.txt";
-    const char *gcpt_name = "./gcpt.bin";
-    const char *ddr_dat = "./out.dat";
     char *payload_path = argv[1];
     char *workload_name = argv[2];
     char *ckpt_result_root = argv[3];
     char *ckpt_config = argv[4];
+    char *emu_to_cpi_txt_name = argv[5];
     char *ckpt_path = (char *)malloc(FILEPATH_BUF_SIZE);
     uint64_t sync_interval = 0;
     sscanf(argv[5], "%ld", &sync_interval);
@@ -76,11 +56,14 @@ int main(int argc, char *argv[]) {
     // run qemu
     std::thread t(run_qemu, qemu_command);
     printf("run qemu\n");
-    sleep(5);
+    sleep(1);
     printf("init ok\n");
     d2q_fifo = open(detail_to_qemu_fifo_name, O_WRONLY);
     q2d_fifo = open(qemu_to_detail_fifo_name, O_RDONLY);
     printf("into checkpoint sync while\n");
+
+    FILE *checkpoint_result = fopen(checkpoint_result_name, "a+");
+    uint32_t sync_count = 0;
     while (1) {
         try {
 //#define SYNC_TEST
@@ -111,6 +94,7 @@ int main(int argc, char *argv[]) {
                     q2d_buf.cpt_id, q2d_buf.total_inst_count);
             memcpy(ckpt_path, q2d_buf.checkpoint_path, FILEPATH_BUF_SIZE);
 
+//#define USE_DDR
 #ifdef USE_DDR
             // run bin2addr
             std::string bin2addr_commmand = get_bin2addr_command(gcpt_name, ckpt_path);
@@ -143,6 +127,8 @@ int main(int argc, char *argv[]) {
                     printf("coreid the maximum number of cores limit was exceeded\n");
                 }
                 d2q_buf.CPI[coreid] = cpi;
+                // result out:workload_name ckpt_point core_id cpi
+                fprintf(checkpoint_result, "%s,%d,%d,%lf\n", workload_name, sync_count * sync_interval, coreid, cpi);
             }
 
             // update qemu
@@ -156,6 +142,7 @@ int main(int argc, char *argv[]) {
             std::cerr << "Exception: " << e.what() << std::endl;
             break;
         }
+        sync_count ++;
     }
     terminate_qemu();
     return 0;
@@ -176,7 +163,7 @@ std::string get_qemu_command(const char *payload, const char *workload_name, con
 std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t max_ins) {
     std::string base_command = "sh pldm.sh ";
     char args[512];
-    sprintf(args, "%s", workload);
+    sprintf(args, "%s %s", workload, max_ins);
     base_command.append(args);
     return base_command;
 }
@@ -191,4 +178,28 @@ std::string get_bin2addr_command(const char *gcpt,const char *workload) {
     base_command.append(base_arggs);
     base_command.append(args);
     return base_command;
+}
+
+void terminate_qemu() {
+    if (qemu_process != nullptr) {
+        qemu_process->exit_code();
+        delete qemu_process;
+        qemu_process = nullptr;
+    }
+    if (qemu_process) {
+        std::cout << "Terminating QEMU process..." << std::endl;
+        qemu_process->terminate();
+    }
+}
+
+int run_qemu(std::string command) {
+    qemu_process = new bp::child(command, bp::std_out > bp::null);
+    std::atexit(terminate_qemu);
+
+    qemu_process->wait();
+    int exit_code = qemu_process->exit_code();
+
+    delete qemu_process;
+    qemu_process = nullptr;
+    return exit_code;
 }
