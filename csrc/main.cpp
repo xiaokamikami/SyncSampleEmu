@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
     printf("into checkpoint sync while\n");
 
     FILE *checkpoint_result = fopen(checkpoint_result_name, "a+");
-    fprintf(checkpoint_result, "workload,point,coreid,cpi\n");
+    fprintf(checkpoint_result, ",workload,bmk,point,coreid,cpi\n");
     uint32_t sync_count = 0;
     while (1) {
         try {
@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
                 }
                 d2q_buf.CPI[coreid] = cpi;
                 // result out:workload_name ckpt_point core_id cpi
-                fprintf(checkpoint_result, "%s,%d,%d,%lf\n", workload_name, sync_count * sync_interval, coreid, cpi);
+                fprintf(checkpoint_result, ",%s,%s,%ld,%d,%lf\n", workload_name, workload_name, sync_count * sync_interval, coreid, cpi);
             }
 
             // update qemu

@@ -5,7 +5,7 @@ export WORKLOAD_NAME=workload_name # 工作负载名称
 export CHECKPOINT_RESULT_ROOT=$(pwd)/ 
 # 最终生成的检查点的路径格式：/CHECKPOINT_RESULT_ROOT/CHECKPOINT_CONFIG/WORKLOAD_NAME/指令数/检查点.zstd/gz
 export CHECKPOINT_CONFIG=dualcore_with_emu
-export SYNC_INTERVAL=1000000 # 触发同步QEMU与EMU的时钟数
+export SYNC_INTERVAL=1000000000 # 触发同步QEMU与EMU的时钟数 默认1Billion
 
 CHECKPOINT_PATH="/nfs/home/zstd-test"
 mkdir result
