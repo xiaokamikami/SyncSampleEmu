@@ -27,9 +27,9 @@ int run_qemu(std::string command);
 
 bp::child* qemu_process = nullptr;
 
-const char *checkpoint_result_name = "./checkpoint_cpi.csv";
 const char *detail_to_qemu_fifo_name = "./detail_to_qemu.fifo";
 const char *qemu_to_detail_fifo_name = "./qemu_to_detail.fifo";
+const char *emu_to_cpi_txt_name =  "./emu_to_cpi_file.txt";
 const char *gcpt_name = "./gcpt.bin";
 const char *ddr_dat = "./out.dat";
 
@@ -38,10 +38,10 @@ int main(int argc, char *argv[]) {
     char *workload_name = argv[2];
     char *ckpt_result_root = argv[3];
     char *ckpt_config = argv[4];
-    char *emu_to_cpi_txt_name = argv[5];
     char *ckpt_path = (char *)malloc(FILEPATH_BUF_SIZE);
     uint64_t sync_interval = 0;
     sscanf(argv[5], "%ld", &sync_interval);
+    char *checkpoint_result_name = argv[6];
 
     printf("Run sync emu with qemu\n");
     printf("payload=%s, workload_name=%s, result_root=%s , config=%s, sync_interval=%ld\n",
@@ -63,6 +63,7 @@ int main(int argc, char *argv[]) {
     printf("into checkpoint sync while\n");
 
     FILE *checkpoint_result = fopen(checkpoint_result_name, "a+");
+    fprintf(checkpoint_result, "workload,point,coreid,cpi\n");
     uint32_t sync_count = 0;
     while (1) {
         try {
@@ -163,7 +164,7 @@ std::string get_qemu_command(const char *payload, const char *workload_name, con
 std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t max_ins) {
     std::string base_command = "sh pldm.sh ";
     char args[512];
-    sprintf(args, "%s %s", workload, max_ins);
+    sprintf(args, "%s %ld", workload, max_ins);
     base_command.append(args);
     return base_command;
 }
