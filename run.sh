@@ -7,6 +7,7 @@ export CHECKPOINT_RESULT_ROOT=$(pwd)/
 export CHECKPOINT_CONFIG=dualcore_with_emu
 export SYNC_INTERVAL=1000000000 # 触发同步QEMU与EMU的时钟数 默认1Billion
 
+MAX_INSTRS=40000000
 CHECKPOINT_PATH="/nfs/home/zstd-test"
 mkdir result
 CHECKPOINT_RESULT_PATH="./result/checkpoint_cpi.csv"
@@ -22,7 +23,7 @@ do
         work_load_name=${var#$CHECKPOINT_PATH/}
         work_load_name=${work_load_name%/*}
         export PAYLOAD=$file # 工作负载二进制文件路径
-        #./syncmapemu argv[1] [2] [3] [4] [5] [6]
-        ./syncmapemu $PAYLOAD $work_load_name $CHECKPOINT_RESULT_ROOT $CHECKPOINT_CONFIG $SYNC_INTERVAL $CHECKPOINT_RESULT_PATH
+        #./syncmapemu argv[1]             [2]                     [3]                [4]            [5]         [6]                     [7]
+        ./syncmapemu $PAYLOAD $work_load_name $CHECKPOINT_RESULT_ROOT $CHECKPOINT_CONFIG $SYNC_INTERVAL $MAX_INSTRS $CHECKPOINT_RESULT_PATH
     fi
 done

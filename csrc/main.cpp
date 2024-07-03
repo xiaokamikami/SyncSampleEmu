@@ -40,8 +40,10 @@ int main(int argc, char *argv[]) {
     char *ckpt_config = argv[4];
     char *ckpt_path = (char *)malloc(FILEPATH_BUF_SIZE);
     uint64_t sync_interval = 0;
+    uint64_t max_instrs = 0;
     sscanf(argv[5], "%ld", &sync_interval);
-    char *checkpoint_result_name = argv[6];
+    sscanf(argv[6], "%ld", &max_instrs);
+    char *checkpoint_result_name = argv[7];
 
     printf("Run sync emu with qemu\n");
     printf("payload=%s, workload_name=%s, result_root=%s , config=%s, sync_interval=%ld\n",
@@ -63,6 +65,10 @@ int main(int argc, char *argv[]) {
     printf("into checkpoint sync while\n");
 
     FILE *checkpoint_result = fopen(checkpoint_result_name, "a+");
+    if (checkpoint_result == NULL) {
+        printf("open checkpoint result fail\n");
+        exit(0);
+    }
     fprintf(checkpoint_result, ",workload,bmk,point,coreid,cpi\n");
     uint32_t sync_count = 0;
     while (1) {
@@ -102,9 +108,9 @@ int main(int argc, char *argv[]) {
             bp::child b(bin2addr_commmand);
             b.wait();
             b.exit_code();
-            std::string pldm_command = get_pldm_command(gcpt_name, ddr_dat, 40 * 1000000);
+            std::string pldm_command = get_pldm_command(gcpt_name, ddr_dat, max_instrs);
 #else
-            std::string pldm_command = get_pldm_command(gcpt_name, ckpt_path, 40 * 1000000);
+            std::string pldm_command = get_pldm_command(gcpt_name, ckpt_path, max_instrs);
 #endif
             //run emulate
             int coreid = 0;
@@ -128,7 +134,7 @@ int main(int argc, char *argv[]) {
                     printf("coreid the maximum number of cores limit was exceeded\n");
                 }
                 d2q_buf.CPI[coreid] = cpi;
-                // result out:workload_name ckpt_point core_id cpi
+                // result out:workload,bmk,point,coreid,cpi
                 fprintf(checkpoint_result, ",%s,%s,%ld,%d,%lf\n", workload_name, workload_name, sync_count * sync_interval, coreid, cpi);
             }
 
@@ -169,7 +175,7 @@ std::string get_pldm_command(const char *gcpt, const char *workload, uint64_t ma
     return base_command;
 }
 
-std::string get_bin2addr_command(const char *gcpt,const char *workload) {
+std::string get_bin2addr_command(const char *gcpt, const char *workload) {
 //exmaple shell: ./bin2ddr -i $ckpt -o ./out.dat -m "row,ba,col,bg" -r $gcpt
     std::string base_command = "./Bin2Addr/bin2addr";
     std::string base_arggs = "-m \"row,ba,col,bg\" -o $(pwd)/out.dat";
