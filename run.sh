@@ -9,6 +9,7 @@ export SYNC_INTERVAL=1000000000 # 触发同步QEMU与EMU的时钟数 默认1Bill
 
 MAX_INSTRS=40000000
 CHECKPOINT_PATH="/nfs/home/zstd-test"
+
 mkdir result
 CHECKPOINT_RESULT_PATH="./result/checkpoint_cpi.csv"
 
@@ -27,3 +28,4 @@ do
         ./syncmapemu $PAYLOAD $work_load_name $CHECKPOINT_RESULT_ROOT $CHECKPOINT_CONFIG $SYNC_INTERVAL $MAX_INSTRS $CHECKPOINT_RESULT_PATH
     fi
 done
+pkill -u $USER -9 qemu
