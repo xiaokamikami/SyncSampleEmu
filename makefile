@@ -2,7 +2,10 @@ CXX = g++
 CXXFLAGS = -std=c++11 -Wextra -Wall -O2
 
 PROM = syncmapemu  
-  
+
+ifeq ($(USE_DDR), 1)
+CXXFLAGS += -DUSE_DDR
+endif
 # 指定源文件和头文件搜索路径  
 SRCDIR = ./csrc/  
 INCDIR = ./include/  
